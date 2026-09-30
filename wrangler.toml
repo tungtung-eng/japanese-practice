@@ -12,16 +12,13 @@ compatibility_date = "2026-09-01"
 binding = "SUBS"
 id = "daa9992c046b4bb8bdf3a19a092cee63"
 
-# 排程（UTC 時間；台灣 = UTC + 8）
-# Cloudflare 免費方案「整個帳號」最多 5 個排程，所以三個時段合併成一個：
-# 它會在 01:00、01:30、03:00、03:30、12:00、12:30 各醒來一次，
-# 程式只在其中三個時間送出，其他的直接略過：
-#   01:00 UTC = 09:00 早
-#   03:30 UTC = 11:30 中
-#   12:00 UTC = 20:00 晚
-# 改時間的話，worker/index.js 裡的 SLOT_AT 要一起改
+# 排程：不用自己的排程。
+# Cloudflare 免費方案「整個帳號」最多 5 個排程，已經用滿了，
+# 所以改由工地氣象站（每 10 分鐘跑一次）順便呼叫這裡的 /tick，
+# 由 worker/index.js 判斷現在是不是 09:00、11:30、20:00（台灣時間）該送的時候。
+# crons 留空，部署時會把之前設到一半的排程清掉。
 [triggers]
-crons = ["0,30 1,3,12 * * *"]
+crons = []
 
 # VAPID 金鑰不寫在這裡，用 secret 存（deploy.ps1 會自動產生並上傳）：
 #   VAPID_PUBLIC、VAPID_PRIVATE

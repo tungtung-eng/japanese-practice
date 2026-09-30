@@ -6,7 +6,11 @@
  *   POST /subscribe    記下這支手機的訂閱
  *   POST /unsubscribe  刪除訂閱
  *   POST /test         馬上送一則測試通知
- *   排程（wrangler.toml 的 crons）每天台灣時間 09:00、11:30、20:00 各送一句
+ *   POST /tick         到時間就送今日一句（台灣時間 09:00、11:30、20:00）
+ *
+ * /tick 由工地氣象站的排程（每 10 分鐘）順便呼叫，這裡自己不佔排程名額
+ * （Cloudflare 免費方案整個帳號最多 5 個排程，已經用滿）。
+ * 同一個時段一天只會送一次，所以別人亂呼叫也不會多送。
  *
  * 金鑰用 Cloudflare secret 儲存（deploy.ps1 會自動產生並上傳）：
  *   VAPID_PUBLIC、VAPID_PRIVATE
@@ -18,13 +22,36 @@ import { dailyPhrase, taiwanDay } from '../phrases.js';
 // 只接受自己的網頁呼叫（本機測試用 localhost）
 const ALLOWED_ORIGINS = [/^https:\/\/tungtung-eng\.github\.io$/, /^http:\/\/localhost(:\d+)?$/, /^http:\/\/127\.0\.0\.1(:\d+)?$/];
 
-// 送出時間（UTC 的「時:分」）→ 時段。台灣時間 = UTC + 8。
-// 排程只有一個（免費方案整個帳號最多 5 個），會多醒來幾次，不在這張表裡的時間就略過。
+// 各時段的送出時間（UTC 的「時, 分」）。台灣時間 = UTC + 8。
 const SLOT_AT = {
-  '1:00': 'morning',   // 09:00
-  '3:30': 'noon',      // 11:30
-  '12:00': 'evening',  // 20:00
+  morning: [1, 0],    // 09:00
+  noon: [3, 30],      // 11:30
+  evening: [12, 0],   // 20:00
 };
+// 呼叫端每 10 分鐘來一次，所以送出時間之後 10 分鐘內都算到了
+const WINDOW_MIN = 10;
+
+/** 現在該送哪個時段（沒有就回傳 null） */
+function dueSlot(ms) {
+  const t = new Date(ms);
+  const now = t.getUTCHours() * 60 + t.getUTCMinutes();
+  for (const [slot, [h, m]] of Object.entries(SLOT_AT)) {
+    const d = now - (h * 60 + m);
+    if (d >= 0 && d < WINDOW_MIN) return slot;
+  }
+  return null;
+}
+
+/** 到時間就送；同一天同一個時段只送一次 */
+async function tick(env, ms = Date.now()) {
+  const slot = dueSlot(ms);
+  if (!slot) return { sent: false, reason: '還沒到時間' };
+  const key = 'sent:' + taiwanDay(ms) + ':' + slot;
+  if (await env.SUBS.get(key)) return { sent: false, reason: '這個時段今天送過了', slot };
+  await env.SUBS.put(key, '1', { expirationTtl: 2 * 86400 });
+  await broadcast(slot, ms, env);
+  return { sent: true, slot };
+}
 
 const TITLES = {
   morning: '☀️ 早安！今日第一句',
@@ -80,6 +107,7 @@ async function handle(request, env) {
   if (url.pathname === '/') return new Response('日語隨身練 推播伺服器運作中', { headers: { 'content-type': 'text/plain; charset=utf-8' } });
 
   if (request.method !== 'POST') return json({ error: '只接受 POST' }, 405, request);
+  if (url.pathname === '/tick') return json(await tick(env), 200, request);
   const body = await request.json().catch(() => null);
   if (!body || !validSub(body.sub)) return json({ error: '缺少訂閱資料' }, 400, request);
   const id = keyOf(body.sub.endpoint);
@@ -135,10 +163,8 @@ export default {
     }
   },
 
+  // 萬一以後有排程名額，也可以直接在 wrangler.toml 設 crons（例如每 10 分鐘），效果一樣
   async scheduled(event, env, ctx) {
-    const t = new Date(event.scheduledTime);
-    const slot = SLOT_AT[t.getUTCHours() + ':' + String(t.getUTCMinutes()).padStart(2, '0')];
-    if (!slot) return; // 多醒來的那幾次，不送
-    ctx.waitUntil(broadcast(slot, event.scheduledTime, env));
+    ctx.waitUntil(tick(env, event.scheduledTime));
   },
 };
