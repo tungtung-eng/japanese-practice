@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="zh-Hant-TW">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>日語隨身練</title>
+  <meta name="description" content="旅遊與生活日語會話、五十音複習、每日三句推播">
+  <meta name="theme-color" content="#1e3a5f">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icon-192.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="日語隨身練">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="top">
+    <h1>日語隨身練</h1>
+    <button id="settingsBtn" class="icon-btn" aria-label="設定">⚙️ 設定</button>
+  </header>
+
+  <div id="offline" class="banner" hidden>⚠️ 目前沒有網路：句子和發音都能用，「我說中文」查詢需要網路</div>
+  <div id="noSpeech" class="banner" hidden>⚠️ 這個瀏覽器不能用語音辨識，請用 iPhone 的 Safari 或 Android 的 Chrome；也可以按「⌨️ 打字」</div>
+
+  <nav class="tabs">
+    <button class="tab active" data-tab="talk">💬 會話練習</button>
+    <button class="tab" data-tab="kana"><span lang="ja">あ</span> 五十音</button>
+  </nav>
+
+  <main>
+    <section id="talk" class="panel">
+      <div id="lookup" class="lookup"></div>
+      <div id="today" class="today"></div>
+      <section id="sceneBar" class="scene-bar">
+        <div class="label">場景：</div>
+        <div id="sceneGrid" class="scene-grid"></div>
+      </section>
+      <div id="listHead" class="list-head"></div>
+      <div id="list" class="list"></div>
+      <div id="live" class="live" hidden></div>
+    </section>
+
+    <section id="kana" class="panel" hidden>
+      <div class="kana-opts">
+        <div class="seg" id="kanaScript">
+          <button data-v="hira" lang="ja">ひらがな</button>
+          <button data-v="kata" lang="ja">カタカナ</button>
+          <button data-v="mix">混合</button>
+        </div>
+        <div class="seg" id="kanaDir">
+          <button data-v="k2r">看假名選拼音</button>
+          <button data-v="r2k">看拼音選假名</button>
+        </div>
+        <div class="seg" id="kanaGroups">
+          <button data-v="basic">清音</button>
+          <button data-v="voiced">濁音</button>
+          <button data-v="combo">拗音</button>
+        </div>
+      </div>
+      <div id="quiz" class="quiz"></div>
+      <div id="kanaStats" class="kana-stats"></div>
+      <button id="chartBtn" class="small-btn wide">📋 五十音表（紅色是常錯的字）</button>
+      <div id="chart" class="chart" hidden></div>
+    </section>
+  </main>
+
+  <footer id="talkBar" class="talk-bar">
+    <div id="typeRow" class="type-row" hidden>
+      <textarea id="typeInput" rows="2" placeholder="打中文，查日文怎麼說…"></textarea>
+      <button id="typeGo" class="small-btn me">查日文說法</button>
+    </div>
+    <button id="autoBtn" class="auto-btn">🔁 自動跟讀（聽一句→念一句）</button>
+    <div class="mic-row">
+      <button id="micMe" class="mic me">
+        <span class="mic-icon">🎤</span>
+        <span class="mic-main">我說中文</span>
+        <span class="mic-sub">查日文說法</span>
+      </button>
+      <button id="micJa" class="mic ja">
+        <span class="mic-icon">🎤</span>
+        <span class="mic-main">跟著念日文</span>
+        <span class="mic-sub" id="jaSub">比對發音</span>
+      </button>
+    </div>
+    <div class="tool-row">
+      <button id="favBtn" class="small-btn">⭐ 收藏</button>
+      <button id="reviewBtn" class="small-btn">📅 今日複習</button>
+      <button id="typeBtn" class="small-btn">⌨️ 打字</button>
+    </div>
+  </footer>
+
+  <dialog id="settings">
+    <h2>設定</h2>
+    <label class="check"><input type="checkbox" id="optAutoSpeak"> 點句子時自動唸出來</label>
+    <label class="check"><input type="checkbox" id="optSlow"> 唸慢一點</label>
+    <label class="check"><input type="checkbox" id="optBig"> 字再大一點</label>
+    <label class="check"><input type="checkbox" id="optFuri"> 漢字上面顯示假名</label>
+    <label class="check"><input type="checkbox" id="optRomaji"> 顯示羅馬拼音</label>
+
+    <h3>🔔 每日三句推播</h3>
+    <p class="push-times">☀️ 09:00　🍱 11:30　🌙 20:00（台灣時間）</p>
+    <div id="pushState" class="push-state"></div>
+    <div class="push-actions">
+      <button id="pushBtn" class="small-btn me" hidden></button>
+      <button id="pushTest" class="small-btn" hidden>送一則測試</button>
+    </div>
+
+    <p class="about">句子發音用手機內建的日文語音；語音辨識用瀏覽器內建功能。「我說中文」查詢使用免費的網路翻譯服務。收藏和複習紀錄只存在這支手機上。</p>
+    <button id="settingsClose" class="small-btn wide">完成</button>
+  </dialog>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>

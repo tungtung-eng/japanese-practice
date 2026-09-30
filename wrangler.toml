@@ -1,0 +1,24 @@
+# 日語隨身練 —— 每日三句推播伺服器（Cloudflare Worker）
+# 網頁本身放在 GitHub Pages，這個 Worker 只負責推播。
+# 部署：雙擊「部署推播伺服器.bat」
+
+name = "japanese-practice-push"
+main = "worker/index.js"
+compatibility_date = "2026-09-01"
+
+# 訂閱資料（哪些手機要收通知）
+# id 由 deploy.ps1 第一次部署時自動建立並填入
+[[kv_namespaces]]
+binding = "SUBS"
+id = "PLACEHOLDER"
+
+# 每天三次（UTC 時間；台灣 = UTC + 8）
+#   01:00 UTC = 09:00 早
+#   03:30 UTC = 11:30 中
+#   12:00 UTC = 20:00 晚
+# 改時間的話，worker/index.js 裡的 CRON_SLOT 要一起改
+[triggers]
+crons = ["0 1 * * *", "30 3 * * *", "0 12 * * *"]
+
+# VAPID 金鑰不寫在這裡，用 secret 存（deploy.ps1 會自動產生並上傳）：
+#   VAPID_PUBLIC、VAPID_PRIVATE
