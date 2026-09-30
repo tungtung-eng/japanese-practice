@@ -5,7 +5,8 @@
  *   GET  /key          給網頁 VAPID 公鑰，用來訂閱
  *   POST /subscribe    記下這支手機的訂閱
  *   POST /unsubscribe  刪除訂閱
- *   POST /test         馬上送一則測試通知
+ *   POST /test         馬上送一則測試：第一次開啟時送「設定成功」，
+ *                      之後按「送一則測試」送現在這個時段的今日一句（跟真的一樣）
  *   POST /tick         到時間就送今日一句（台灣時間 09:00、11:30、20:00）
  *
  * /tick 由工地氣象站的排程（每 10 分鐘）順便呼叫，這裡自己不佔排程名額
@@ -92,11 +93,18 @@ function validSub(sub) {
     && sub.keys && typeof sub.keys.p256dh === 'string' && typeof sub.keys.auth === 'string';
 }
 
-function message(slot, ms) {
+/** 現在（台灣時間）是哪個時段：11:30 前算早、20:00 前算中、之後算晚 */
+function slotNow(ms) {
+  const t = new Date(ms + 8 * 3600 * 1000);
+  const mins = t.getUTCHours() * 60 + t.getUTCMinutes();
+  return mins < 11 * 60 + 30 ? 'morning' : mins < 20 * 60 ? 'noon' : 'evening';
+}
+
+function message(slot, ms, titlePrefix = '') {
   const p = dailyPhrase(slot, taiwanDay(ms));
   let body = p.text + '\n' + p.romaji + '\n' + p.zh;
   if (slot === 'evening') body += '\n睡前也複習一下早上和中午的句子吧！';
-  return JSON.stringify({ title: TITLES[slot], body, tag: 'daily-' + slot, slot });
+  return JSON.stringify({ title: titlePrefix + TITLES[slot], body, tag: 'daily-' + slot, slot });
 }
 
 async function handle(request, env) {
@@ -123,11 +131,16 @@ async function handle(request, env) {
   if (url.pathname === '/test') {
     // 只替已訂閱的手機送，不讓別人拿這支 API 亂送
     if (!(await env.SUBS.get(id))) return json({ error: '還沒訂閱' }, 404, request);
-    const r = await sendPush(body.sub, JSON.stringify({
-      title: '🔔 通知設定成功｜日語隨身練',
-      body: '每天 09:00、11:30、20:00 會各送一句日文。\nがんばりましょう！（一起加油吧！）',
-      tag: 'test',
-    }), env);
+    const payload = body.preview
+      // 「送一則測試」：送現在這個時段的今日一句，長得跟每天收到的一樣
+      ? message(slotNow(Date.now()), Date.now(), '🧪 測試｜')
+      // 第一次開啟通知
+      : JSON.stringify({
+        title: '🔔 通知設定成功｜日語隨身練',
+        body: '每天 09:00、11:30、20:00 會各送一句日文。\nがんばりましょう！（一起加油吧！）',
+        tag: 'test',
+      });
+    const r = await sendPush(body.sub, payload, env);
     return json({ ok: r.ok, status: r.status }, 200, request);
   }
   return json({ error: '沒有這個路徑' }, 404, request);

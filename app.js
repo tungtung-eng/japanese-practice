@@ -987,12 +987,12 @@ async function pushTest() {
   try {
     const reg = await navigator.serviceWorker.ready;
     const sub = await reg.pushManager.getSubscription();
-    if (sub) await pushPost('/test', { sub: sub.toJSON() });
-    b.textContent = '已送出，等幾秒';
+    if (sub) await pushPost('/test', { sub: sub.toJSON(), preview: true });
+    b.textContent = '已送出今日一句，等幾秒';
   } catch {
     b.textContent = '送出失敗';
   }
-  setTimeout(() => { b.disabled = false; b.textContent = '送一則測試'; }, 3000);
+  setTimeout(() => { b.disabled = false; b.textContent = '送一則測試（今日一句）'; }, 3000);
 }
 
 // ---------- Wiring ----------
