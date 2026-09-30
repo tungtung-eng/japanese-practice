@@ -238,6 +238,7 @@ function showResult(p, html) {
         unlockTts();
         const act = b.dataset.act;
         if (act === 'listen') sayPhrase(p);
+        else if (act === 'slow') sayPhrase(p, true);
         else if (act === 'again') practice(p);
         else if (act === 'good') { markPracticed(p.id); showResult(p, '<div class="verdict">😀 很好！</div>'); updateTodayTabs(); }
         else if (act === 'bad') { addToReview(p.id); showResult(p, '<div class="verdict">😅 已加入複習，明天再練一次</div>'); }
@@ -248,20 +249,23 @@ function showResult(p, html) {
   if (first) first.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
-function resultHTML(p, heard) {
+// 幾分算過關：自動跟讀要念到這個分數才會換下一句
+const PASS = 0.8;
+
+function resultHTML(p, heard, { buttons = true } = {}) {
   const g = grade(p, heard);
   const marks = g.chars.map((c, i) => (g.hits[i] == null ? esc(c) : '<span class="' + (g.hits[i] ? 'hit' : 'miss') + '">' + esc(c) + '</span>')).join('');
   let verdict;
   if (g.score >= 0.9) verdict = '🎉 很標準！';
-  else if (g.score >= 0.7) verdict = '👍 不錯！紅色的字再練一下';
-  else if (g.score >= 0.4) verdict = '💪 有幾個地方不一樣，再試一次';
+  else if (g.score >= PASS) verdict = '👍 過關！紅色的字可以再練一下';
+  else if (g.score >= 0.5) verdict = '💪 有幾個地方不一樣，再試一次';
   else verdict = '🤔 聽不太出來，靠近手機、慢慢念一次';
   return {
     score: g.score,
     html: '<div class="verdict">' + verdict + '（' + Math.round(g.score * 100) + ' 分）</div>'
       + '<div class="marks" lang="ja">' + marks + '</div>'
       + '<div class="heard">你念的：<span lang="ja">' + esc(heard) + '</span></div>'
-      + '<div class="self"><button data-act="listen">🔊 再聽一次</button><button data-act="again">🎤 再念一次</button></div>',
+      + (buttons ? '<div class="self"><button data-act="listen">🔊 再聽</button><button data-act="slow">🐢 慢速</button><button data-act="again">🎤 再念一次</button></div>' : ''),
   };
 }
 
@@ -281,10 +285,16 @@ async function practice(p) {
     const heard = await recognize('ja-JP', 'ja');
     if (!heard) { showResult(p, selfCheckHTML('沒有聽到聲音')); return; }
     const r = resultHTML(p, heard);
-    showResult(p, r.html);
-    markPracticed(p.id);
-    if (r.score < 0.7) addToReview(p.id);
-    updateTodayTabs();
+    if (r.score >= PASS) {
+      showResult(p, r.html);
+      markPracticed(p.id);
+      updateTodayTabs();
+    } else {
+      // 沒過：自動放慢速度示範一次，再讓你念
+      showResult(p, r.html + '<div class="retry">🐢 放慢速度示範一次，聽完按「🎤 再念一次」</div>');
+      addToReview(p.id);
+      await sayPhrase(p, true);
+    }
   } catch (e) {
     showResult(p, selfCheckHTML(e.message));
   }
@@ -350,7 +360,7 @@ function setListening(who) {
   $('micMe').disabled = who === 'ja';
   $('micJa').disabled = who === 'me';
   $('micMe').querySelector('.mic-sub').textContent = who === 'me' ? '正在聽…說完再按一下' : '查日文說法';
-  $('jaSub').textContent = who === 'ja' ? '正在聽…念完停一下' : '比對發音';
+  $('jaSub').textContent = autoMode ? '念不過可以先跳過' : who === 'ja' ? '正在聽…念完停一下' : '比對發音';
 }
 
 function showLive(text) {
@@ -366,42 +376,65 @@ function toast(msg) {
   toastTimer = setTimeout(() => { if (!rec) showLive(''); }, 4000);
 }
 
-// ---------- Auto follow-along: listen to one, say one, next ----------
+// ---------- Auto follow-along: listen, say it, pass before moving on ----------
+// 念到 PASS 分才換下一句；沒過就同一句再來，第二次起放慢速度示範。
+// 真的卡住可以按「跟著念日文」大按鈕跳過這句。
 let autoMode = false;
+let autoSkip = false;
 
 async function runAuto() {
   const ids = listIds();
   if (!ids.length) { setAuto(false); return; }
   let i = Math.max(0, ids.indexOf(currentId));
+  let attempt = 0; // 這一句念了幾次沒過
+  let silent = 0;  // 連續幾次沒聽到聲音
+  const next = () => { i = (i + 1) % ids.length; attempt = 0; silent = 0; autoSkip = false; };
   while (autoMode) {
     const p = getPhrase(ids[i]);
     select(p.id, false);
     cardsFor(p.id)[0]?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    await sayPhrase(p);
+    await sayPhrase(p, attempt > 0 || settings.slow);
     if (!autoMode) break;
+    if (autoSkip) { showResult(p, '<div class="verdict">⏭ 跳過，已加入複習</div>'); addToReview(p.id); next(); continue; }
     await sleep(300);
     let heard = '';
     try { heard = await recognize('ja-JP', 'ja'); } catch (e) { toast(e.message); setAuto(false); break; }
     if (!autoMode) break;
-    if (heard) {
-      const r = resultHTML(p, heard);
-      showResult(p, r.html);
-      markPracticed(p.id);
-      if (r.score < 0.7) addToReview(p.id);
-    } else {
-      showResult(p, '<div class="verdict">😶 沒聽到，換下一句</div>');
+    if (autoSkip) { showResult(p, '<div class="verdict">⏭ 跳過，已加入複習</div>'); addToReview(p.id); next(); await sleep(800); continue; }
+
+    if (!heard) {
+      silent++;
+      if (silent >= 3) { toast('連續 3 次沒聽到聲音，自動跟讀先停下來'); setAuto(false); break; }
+      showResult(p, '<div class="verdict">😶 沒聽到，再念一次</div>');
+      await sleep(1200);
+      continue;
     }
-    await sleep(1800);
-    i = (i + 1) % ids.length;
+    silent = 0;
+    const r = resultHTML(p, heard, { buttons: false });
+    if (r.score >= PASS) {
+      showResult(p, r.html + '<div class="retry pass">✅ 過關！換下一句</div>');
+      markPracticed(p.id);
+      updateTodayTabs();
+      await sleep(1800);
+      next();
+    } else {
+      attempt++;
+      if (attempt === 2) addToReview(p.id);
+      showResult(p, r.html + '<div class="retry">🔁 第 ' + (attempt + 1) + ' 次：放慢速度再聽一次，跟著念'
+        + (attempt >= 3 ? '<br>念不過的話，按下方「⏭ 跳過這句」' : '') + '</div>');
+      await sleep(2500);
+    }
   }
-  updateTodayTabs();
 }
 
 function setAuto(on) {
   autoMode = on;
+  autoSkip = false;
   const btn = $('autoBtn');
   btn.classList.toggle('on', on);
-  btn.textContent = on ? '⏹️ 自動跟讀中（按這裡停止）' : '🔁 自動跟讀（聽一句→念一句）';
+  btn.textContent = on ? '⏹️ 自動跟讀中（按這裡停止）' : '🔁 自動跟讀（念對才換下一句）';
+  $('micJa').querySelector('.mic-main').textContent = on ? '⏭ 跳過這句' : '跟著念日文';
+  $('jaSub').textContent = on ? '念不過可以先跳過' : '比對發音';
   if (on) {
     unlockTts();
     runAuto();
@@ -409,6 +442,12 @@ function setAuto(on) {
     if (rec) rec.abort();
     if (window.speechSynthesis) speechSynthesis.cancel();
   }
+}
+
+function skipAuto() {
+  autoSkip = true;
+  if (rec) rec.abort();
+  if (window.speechSynthesis) speechSynthesis.cancel();
 }
 
 // ---------- "I say it in Chinese" → how to say it in Japanese ----------
@@ -981,7 +1020,7 @@ function init() {
 
   $('micMe').onclick = sayChinese;
   $('micJa').onclick = () => {
-    if (autoMode) { setAuto(false); return; }
+    if (autoMode) { skipAuto(); return; }
     const p = getPhrase(currentId) || getPhrase(listIds()[0]);
     if (!p) return;
     select(p.id, false);

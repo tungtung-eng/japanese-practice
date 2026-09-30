@@ -142,6 +142,8 @@ body.no-romaji .card .romaji { display: none; }
 .result .hit { color: var(--ok); font-weight: 700; }
 .result .miss { color: var(--shu); font-weight: 700; text-decoration: underline wavy; text-underline-offset: 4px; }
 .result .self { display: flex; gap: 8px; margin-top: 6px; }
+.result .retry { margin-top: 6px; padding: 6px 8px; border-radius: 10px; background: var(--gold-soft); color: var(--gold-text); font-weight: 700; }
+.result .retry.pass { background: var(--ok-soft); color: var(--ok); }
 .result .self button { flex: 1; border: 0; border-radius: 10px; padding: 6px; background: var(--card); font-size: .95em; }
 
 /* 我說中文的查詢結果 */

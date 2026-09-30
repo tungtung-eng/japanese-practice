@@ -1,7 +1,7 @@
 // 背景服務程式：
 //   1. 把 App 存在手機上，沒網路也能打開、看句子、聽發音
 //   2. 收到每日三句推播就顯示；點通知就打開 App 並跳到那一句
-const CACHE = 'nihongo-v1';
+const CACHE = 'nihongo-v2';
 const FILES = ['./', 'index.html', 'style.css', 'app.js', 'phrases.js', 'kana.js', 'manifest.webmanifest', 'icon.svg', 'icon-192.png', 'icon-512.png'];
 
 self.addEventListener('install', (e) => {
