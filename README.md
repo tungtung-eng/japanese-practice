@@ -55,7 +55,7 @@
 | 推播 | Cloudflare Workers 免費方案（排程 3 個、KV 存訂閱） |
 | 網頁 | GitHub Pages |
 
-注意：Cloudflare 免費方案每個帳號最多 5 個排程；工地氣象站用 1 個，這裡用 3 個，合計 4 個。
+注意：Cloudflare 免費方案**整個帳號**最多 5 個排程，所以三個時段合併成 1 個排程（見 `wrangler.toml`）。
 
 ## 本機測試
 

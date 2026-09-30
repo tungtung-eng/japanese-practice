@@ -7,18 +7,21 @@ main = "worker/index.js"
 compatibility_date = "2026-09-01"
 
 # 訂閱資料（哪些手機要收通知）
-# id 由 deploy.ps1 第一次部署時自動建立並填入
+# id 是 deploy.ps1 第一次部署時自動建立的
 [[kv_namespaces]]
 binding = "SUBS"
-id = "PLACEHOLDER"
+id = "daa9992c046b4bb8bdf3a19a092cee63"
 
-# 每天三次（UTC 時間；台灣 = UTC + 8）
+# 排程（UTC 時間；台灣 = UTC + 8）
+# Cloudflare 免費方案「整個帳號」最多 5 個排程，所以三個時段合併成一個：
+# 它會在 01:00、01:30、03:00、03:30、12:00、12:30 各醒來一次，
+# 程式只在其中三個時間送出，其他的直接略過：
 #   01:00 UTC = 09:00 早
 #   03:30 UTC = 11:30 中
 #   12:00 UTC = 20:00 晚
-# 改時間的話，worker/index.js 裡的 CRON_SLOT 要一起改
+# 改時間的話，worker/index.js 裡的 SLOT_AT 要一起改
 [triggers]
-crons = ["0 1 * * *", "30 3 * * *", "0 12 * * *"]
+crons = ["0,30 1,3,12 * * *"]
 
 # VAPID 金鑰不寫在這裡，用 secret 存（deploy.ps1 會自動產生並上傳）：
 #   VAPID_PUBLIC、VAPID_PRIVATE

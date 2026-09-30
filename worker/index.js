@@ -18,11 +18,12 @@ import { dailyPhrase, taiwanDay } from '../phrases.js';
 // 只接受自己的網頁呼叫（本機測試用 localhost）
 const ALLOWED_ORIGINS = [/^https:\/\/tungtung-eng\.github\.io$/, /^http:\/\/localhost(:\d+)?$/, /^http:\/\/127\.0\.0\.1(:\d+)?$/];
 
-// 排程時間（UTC）→ 時段。台灣時間 = UTC + 8。
-const CRON_SLOT = {
-  '0 1 * * *': 'morning',   // 09:00
-  '30 3 * * *': 'noon',     // 11:30
-  '0 12 * * *': 'evening',  // 20:00
+// 送出時間（UTC 的「時:分」）→ 時段。台灣時間 = UTC + 8。
+// 排程只有一個（免費方案整個帳號最多 5 個），會多醒來幾次，不在這張表裡的時間就略過。
+const SLOT_AT = {
+  '1:00': 'morning',   // 09:00
+  '3:30': 'noon',      // 11:30
+  '12:00': 'evening',  // 20:00
 };
 
 const TITLES = {
@@ -135,8 +136,9 @@ export default {
   },
 
   async scheduled(event, env, ctx) {
-    const slot = CRON_SLOT[event.cron];
-    if (!slot) { console.error('不認得的排程：' + event.cron); return; }
+    const t = new Date(event.scheduledTime);
+    const slot = SLOT_AT[t.getUTCHours() + ':' + String(t.getUTCMinutes()).padStart(2, '0')];
+    if (!slot) return; // 多醒來的那幾次，不送
     ctx.waitUntil(broadcast(slot, event.scheduledTime, env));
   },
 };
