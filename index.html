@@ -3,20 +3,24 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>日語隨身練</title>
-  <meta name="description" content="旅遊與生活日語會話、五十音複習、每日三句推播">
+  <title>英日雙語學習機</title>
+  <meta name="description" content="英文、日文旅遊與生活會話，跟讀比對、五十音、發音陷阱、常用單字、每日三句推播">
   <meta name="theme-color" content="#1e3a5f">
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="icon-192.png">
   <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-title" content="日語隨身練">
+  <meta name="apple-mobile-web-app-title" content="英日雙語學習機">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
   <header class="top">
-    <h1>日語隨身練</h1>
-    <button id="settingsBtn" class="icon-btn" aria-label="設定">⚙️ 設定</button>
+    <h1>英日雙語學習機</h1>
+    <div id="langSwitch" class="lang-switch" role="group" aria-label="切換語言">
+      <button data-v="ja">🇯🇵 日文</button>
+      <button data-v="en">🇺🇸 英文</button>
+    </div>
+    <button id="settingsBtn" class="icon-btn" aria-label="設定">⚙️</button>
   </header>
 
   <div id="offline" class="banner" hidden>⚠️ 目前沒有網路：句子和發音都能用，「我說中文」查詢需要網路</div>
@@ -25,6 +29,8 @@
   <nav class="tabs">
     <button class="tab active" data-tab="talk">💬 會話練習</button>
     <button class="tab" data-tab="kana"><span lang="ja">あ</span> 五十音</button>
+    <button class="tab" data-tab="traps" hidden>🔤 發音陷阱</button>
+    <button class="tab" data-tab="vocab" hidden>📖 單字</button>
   </nav>
 
   <main>
@@ -62,6 +68,30 @@
       <button id="chartBtn" class="small-btn wide">📋 五十音表（紅色是常錯的字）</button>
       <div id="chart" class="chart" hidden></div>
     </section>
+
+    <section id="traps" class="panel" hidden>
+      <p class="intro">台灣人最容易念錯的英文音：只差一個音，意思就完全不同。</p>
+      <div class="kana-opts">
+        <div class="seg" id="trapMode"></div>
+        <div class="seg wrap" id="trapGroups"></div>
+      </div>
+      <div id="trapTip" class="trap-tip"></div>
+      <div id="trapQuiz" class="quiz"></div>
+      <div id="trapStats" class="kana-stats"></div>
+      <button id="trapListBtn" class="small-btn wide">📋 全部對照表（點字聽發音）</button>
+      <div id="trapList" class="chart" hidden></div>
+    </section>
+
+    <section id="vocab" class="panel" hidden>
+      <div class="kana-opts">
+        <div class="seg" id="vocabDir"></div>
+      </div>
+      <div id="vocabGroups" class="scene-grid vocab-groups"></div>
+      <div id="vocabQuiz" class="quiz"></div>
+      <div id="vocabStats" class="kana-stats"></div>
+      <button id="vocabListBtn" class="small-btn wide">📋 這一類的單字（點字聽發音）</button>
+      <div id="vocabList" class="chart" hidden></div>
+    </section>
   </main>
 
   <footer id="talkBar" class="talk-bar">
@@ -78,7 +108,7 @@
       </button>
       <button id="micJa" class="mic ja">
         <span class="mic-icon">🎤</span>
-        <span class="mic-main">跟著念日文</span>
+        <span class="mic-main">跟著念</span>
         <span class="mic-sub" id="jaSub">比對發音</span>
       </button>
     </div>
@@ -94,8 +124,8 @@
     <label class="check"><input type="checkbox" id="optAutoSpeak"> 點句子時自動唸出來</label>
     <label class="check"><input type="checkbox" id="optSlow"> 唸慢一點</label>
     <label class="check"><input type="checkbox" id="optBig"> 字再大一點</label>
-    <label class="check"><input type="checkbox" id="optFuri"> 漢字上面顯示假名</label>
-    <label class="check"><input type="checkbox" id="optRomaji"> 顯示羅馬拼音</label>
+    <label class="check"><input type="checkbox" id="optFuri"> 日文：漢字上面顯示假名</label>
+    <label class="check"><input type="checkbox" id="optRomaji"> 日文：顯示羅馬拼音</label>
 
     <h3>🔔 每日三句推播</h3>
     <p class="push-times">☀️ 09:00　🍱 11:30　🌙 20:00（台灣時間）</p>
@@ -105,7 +135,7 @@
       <button id="pushTest" class="small-btn" hidden>送一則測試（今日一句）</button>
     </div>
 
-    <p class="about">句子發音用手機內建的日文語音；語音辨識用瀏覽器內建功能。「我說中文」查詢使用免費的網路翻譯服務。收藏和複習紀錄只存在這支手機上。</p>
+    <p class="about">句子發音用手機內建的語音（英文為美式）；語音辨識用瀏覽器內建功能。「我說中文」查詢使用免費的網路翻譯服務。收藏和複習紀錄只存在這支手機上。</p>
     <button id="settingsClose" class="small-btn wide">完成</button>
   </dialog>
 

@@ -1,9 +1,10 @@
 /**
- * 日語隨身練 —— 每日三句推播伺服器（Cloudflare Worker）
+ * 英日雙語學習機 —— 每日三句推播伺服器（Cloudflare Worker）
+ * （Worker 名稱沿用最早的 japanese-practice-push，改名的話網址會變）
  *
  * 網頁放在 GitHub Pages，這裡只負責推播：
  *   GET  /key          給網頁 VAPID 公鑰，用來訂閱
- *   POST /subscribe    記下這支手機的訂閱
+ *   POST /subscribe    記下這支手機的訂閱和要收的語言（ja／en，App 切換語言時會再送一次）
  *   POST /unsubscribe  刪除訂閱
  *   POST /test         馬上送一則測試：第一次開啟時送「設定成功」，
  *                      之後按「送一則測試」送現在這個時段的今日一句（跟真的一樣）
@@ -59,6 +60,8 @@ const TITLES = {
   noon: '🍱 午餐時間，今日第二句',
   evening: '🌙 晚上好，今日第三句',
 };
+const LANG_TAG = { ja: '🇯🇵 ', en: '🇺🇸 ' };
+const langOk = (l) => (l === 'en' ? 'en' : 'ja');
 
 function cors(request) {
   const origin = request.headers.get('origin') || '';
@@ -100,11 +103,12 @@ function slotNow(ms) {
   return mins < 11 * 60 + 30 ? 'morning' : mins < 20 * 60 ? 'noon' : 'evening';
 }
 
-function message(slot, ms, titlePrefix = '') {
-  const p = dailyPhrase(slot, taiwanDay(ms));
-  let body = p.text + '\n' + p.romaji + '\n' + p.zh;
+function message(slot, ms, titlePrefix = '', lang = 'ja') {
+  const p = dailyPhrase(slot, taiwanDay(ms), lang);
+  let body = p.text + '\n' + (lang === 'ja' ? p.romaji + '\n' : '') + p.zh;
+  if (p.tip) body += '\n💡 ' + p.tip;
   if (slot === 'evening') body += '\n睡前也複習一下早上和中午的句子吧！';
-  return JSON.stringify({ title: titlePrefix + TITLES[slot], body, tag: 'daily-' + slot, slot });
+  return JSON.stringify({ title: titlePrefix + LANG_TAG[lang] + TITLES[slot], body, tag: 'daily-' + slot, slot, lang });
 }
 
 async function handle(request, env) {
@@ -112,7 +116,7 @@ async function handle(request, env) {
   if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors(request) });
 
   if (url.pathname === '/key') return json({ key: env.VAPID_PUBLIC || null }, 200, request);
-  if (url.pathname === '/') return new Response('日語隨身練 推播伺服器運作中', { headers: { 'content-type': 'text/plain; charset=utf-8' } });
+  if (url.pathname === '/') return new Response('英日雙語學習機 推播伺服器運作中', { headers: { 'content-type': 'text/plain; charset=utf-8' } });
 
   if (request.method !== 'POST') return json({ error: '只接受 POST' }, 405, request);
   if (url.pathname === '/tick') return json(await tick(env), 200, request);
@@ -121,7 +125,8 @@ async function handle(request, env) {
   const id = keyOf(body.sub.endpoint);
 
   if (url.pathname === '/subscribe') {
-    await env.SUBS.put(id, JSON.stringify({ sub: body.sub, since: Date.now() }));
+    const old = await env.SUBS.get(id, 'json');
+    await env.SUBS.put(id, JSON.stringify({ sub: body.sub, lang: langOk(body.lang), since: old?.since || Date.now() }));
     return json({ ok: true }, 200, request);
   }
   if (url.pathname === '/unsubscribe') {
@@ -130,14 +135,17 @@ async function handle(request, env) {
   }
   if (url.pathname === '/test') {
     // 只替已訂閱的手機送，不讓別人拿這支 API 亂送
-    if (!(await env.SUBS.get(id))) return json({ error: '還沒訂閱' }, 404, request);
+    const rec = await env.SUBS.get(id, 'json');
+    if (!rec) return json({ error: '還沒訂閱' }, 404, request);
     const payload = body.preview
       // 「送一則測試」：送現在這個時段的今日一句，長得跟每天收到的一樣
-      ? message(slotNow(Date.now()), Date.now(), '🧪 測試｜')
+      ? message(slotNow(Date.now()), Date.now(), '🧪 測試｜', langOk(body.lang || rec.lang))
       // 第一次開啟通知
       : JSON.stringify({
-        title: '🔔 通知設定成功｜日語隨身練',
-        body: '每天 09:00、11:30、20:00 會各送一句日文。\nがんばりましょう！（一起加油吧！）',
+        title: '🔔 通知設定成功｜英日雙語學習機',
+        body: langOk(body.lang) === 'en'
+          ? '每天 09:00、11:30、20:00 會各送一句英文。\nLet\'s do our best!（一起加油吧！）'
+          : '每天 09:00、11:30、20:00 會各送一句日文。\nがんばりましょう！（一起加油吧！）',
         tag: 'test',
       });
     const r = await sendPush(body.sub, payload, env);
@@ -147,7 +155,7 @@ async function handle(request, env) {
 }
 
 async function broadcast(slot, ms, env) {
-  const payload = message(slot, ms);
+  const payloads = { ja: message(slot, ms, '', 'ja'), en: message(slot, ms, '', 'en') };
   let sent = 0, removed = 0, failed = 0, cursor;
   do {
     const page = await env.SUBS.list({ prefix: 'sub:', cursor });
@@ -155,7 +163,7 @@ async function broadcast(slot, ms, env) {
       const rec = await env.SUBS.get(k.name, 'json');
       if (!rec) continue;
       try {
-        const r = await sendPush(rec.sub, payload, env);
+        const r = await sendPush(rec.sub, payloads[langOk(rec.lang)], env);
         if (r.gone) { await env.SUBS.delete(k.name); removed++; } else if (r.ok) sent++; else failed++;
       } catch (e) {
         failed++;

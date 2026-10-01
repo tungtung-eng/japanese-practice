@@ -55,7 +55,7 @@ body {
   height: 100dvh;
   -webkit-tap-highlight-color: transparent;
 }
-[lang="ja"], .jp, .kana-line {
+[lang="ja"], .jp[lang="ja"], .kana-line {
   font-family: "Hiragino Maru Gothic ProN", "Hiragino Sans", "Yu Gothic", "Noto Sans JP", sans-serif;
 }
 button, textarea, input { font: inherit; color: inherit; }
@@ -67,7 +67,11 @@ button { cursor: pointer; }
   padding-top: max(8px, env(safe-area-inset-top));
   border-bottom: 4px solid var(--shu);
 }
-.top h1 { margin: 0; font-size: 1.2em; letter-spacing: .05em; }
+.top { gap: 8px; }
+.top h1 { margin: 0; font-size: 1em; letter-spacing: .03em; white-space: nowrap; }
+.lang-switch { display: flex; background: rgba(255,255,255,.15); border-radius: 12px; padding: 3px; gap: 2px; margin-left: auto; }
+.lang-switch button { border: 0; background: transparent; color: #fff; border-radius: 9px; padding: 4px 8px; font-size: .68em; white-space: nowrap; opacity: .8; }
+.lang-switch button.on { background: #fff; color: var(--ai); font-weight: 800; opacity: 1; }
 .icon-btn { background: rgba(255,255,255,.15); color: #fff; border: 0; border-radius: 12px; padding: 6px 12px; font-size: .8em; }
 
 .banner { background: var(--gold-soft); color: var(--gold-text); padding: 8px 16px; font-size: .75em; font-weight: 600; }
@@ -86,7 +90,7 @@ button { cursor: pointer; }
 
 .tabs { display: flex; gap: 8px; padding: 8px 12px; }
 .tab {
-  flex: 1; border: 0; border-radius: 14px; padding: 10px; font-size: .9em; font-weight: 700;
+  flex: 1; border: 0; border-radius: 14px; padding: 9px 4px; font-size: .8em; font-weight: 700; white-space: nowrap;
   background: var(--chip); color: var(--muted);
 }
 .tab.active { background: var(--ai); color: #fff; }
@@ -124,6 +128,8 @@ main { flex: 1; overflow: hidden; display: flex; flex-direction: column; }
 body.no-furi .card .jp rt { display: none; }
 body.no-furi .card .jp { line-height: 1.45; }
 .card .romaji { font-size: .72em; color: var(--muted); font-style: italic; }
+.card .tip { font-size: .66em; color: var(--gold-text); background: var(--gold-soft); border-radius: 8px; padding: 2px 8px; margin: 4px 0 2px; display: inline-block; }
+.card .jp[lang="en"] { line-height: 1.35; margin: 2px 0 2px; }
 body.no-romaji .card .romaji { display: none; }
 .card .zh { font-size: .85em; margin-top: 2px; }
 .card .acts { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
@@ -197,6 +203,30 @@ body.no-romaji .card .romaji { display: none; }
 .auto-btn.on { background: var(--shu); border-color: var(--shu); color: #fff; }
 @keyframes pulse { 50% { transform: scale(.97); } }
 
+.intro { font-size: .72em; color: var(--muted); margin: 4px 4px 8px; }
+.seg.wrap { flex-wrap: wrap; }
+.seg.wrap button { flex: 1 0 22%; }
+.trap-tip { font-size: .7em; line-height: 1.55; background: var(--gold-soft); color: var(--gold-text); border-radius: 12px; padding: 8px 10px; margin-bottom: 10px; }
+.quiz .q.word { font-size: 2.6em; font-family: -apple-system, "Helvetica Neue", sans-serif; }
+.quiz .q.zhq { font-size: 2em; }
+.quiz .zh { font-size: .85em; }
+.quiz .vs { font-size: .7em; color: var(--muted); margin: 6px 0 4px; }
+.quiz .choices button small { display: block; font-size: .6em; font-weight: 500; color: var(--muted); }
+.quiz button.play, .quiz .row button, .quiz .next { border: 0; background: var(--chip); border-radius: 12px; padding: 8px 14px; font-size: .8em; margin: 4px; }
+.quiz button.play.big { background: var(--ai); color: #fff; font-weight: 700; padding: 12px 22px; font-size: .95em; }
+.quiz .row { display: flex; justify-content: center; flex-wrap: wrap; }
+.quiz button.say { display: block; width: 100%; margin-top: 8px; border: 0; border-radius: 16px; padding: 14px; background: var(--shu); color: #fff; font-size: 1em; font-weight: 800; }
+.quiz button.say.listening { box-shadow: 0 0 0 5px var(--gold); animation: pulse 1s infinite; }
+.quiz .after { margin-top: 10px; font-size: .85em; }
+.quiz .after .ok { color: var(--ok); font-weight: 700; }
+.quiz .after .ng { color: var(--shu); font-weight: 700; }
+.quiz .after .tipline { font-size: .8em; color: var(--muted); margin: 6px 0; line-height: 1.5; }
+.quiz button.next, .quiz .row button.next { background: var(--ai); color: #fff; font-weight: 700; }
+.vocab-groups { margin-bottom: 10px; }
+.chart table.words td { text-align: left; padding: 6px 10px; }
+.chart table.words td .k { display: inline; margin-right: 6px; }
+.chart table.words td .r { font-size: .7em; }
+.chart .list-tip { font-size: .62em; color: var(--muted); margin: 0 4px; line-height: 1.5; }
 .tool-row { display: flex; gap: 8px; margin-top: 8px; }
 .tool-row .small-btn { flex: 1; padding: 6px 4px; }
 .tool-row .small-btn.active { border-color: var(--ai); background: var(--ai-soft); font-weight: 700; }

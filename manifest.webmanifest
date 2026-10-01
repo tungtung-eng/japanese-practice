@@ -1,7 +1,7 @@
 {
-  "name": "日語隨身練",
-  "short_name": "日語隨身練",
-  "description": "旅遊與生活日語會話、五十音複習、每日三句推播",
+  "name": "英日雙語學習機",
+  "short_name": "英日雙語學習機",
+  "description": "英文、日文旅遊與生活會話，跟讀比對、五十音、發音陷阱、常用單字、每日三句推播",
   "lang": "zh-Hant-TW",
   "start_url": "./",
   "scope": "./",

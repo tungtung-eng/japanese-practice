@@ -1,4 +1,5 @@
 // 會話句子資料：網頁和推播伺服器（worker/）共用這一份。
+// 這個檔案放日文句子；英文句子在 phrases-en.js，兩邊在下面合併。
 //
 // 日文寫法：[漢字|讀音] 會變成漢字上方的假名注音，例如 [会計|かいけい]。
 // 假名那一行由程式自動產生（把漢字換成讀音），不用另外寫。
@@ -7,7 +8,9 @@
 // slot 決定這個場景的句子會出現在哪一個時段的推播：
 //   morning 早上 09:00　noon 中午 11:30　evening 晚上 20:00
 
-export const SCENES = [
+import { SCENES_EN } from './phrases-en.js';
+
+export const SCENES_JA = [
   {
     id: 'greet', icon: '💬', name: '寒暄', slot: 'morning',
     phrases: [
@@ -202,9 +205,19 @@ export const plainText = (jp) => jp.replace(RUBY, '$1');
 /** 全假名讀音 */
 export const kanaText = (jp) => jp.replace(RUBY, '$2');
 
-/** 每一句都有固定的 id，例如 food-12，收藏與複習紀錄靠它對應 */
-export const PHRASES = SCENES.flatMap((s) => s.phrases.map(([jp, romaji, zh], i) => ({
+/** 兩種語言的設定 */
+export const LANGS = {
+  ja: { name: '日文', flag: '🇯🇵', speech: 'ja-JP', scenes: SCENES_JA },
+  en: { name: '英文', flag: '🇺🇸', speech: 'en-US', scenes: SCENES_EN },
+};
+
+/**
+ * 每一句都有固定的 id，收藏與複習紀錄靠它對應。
+ * 日文是 food-12（沿用最早的編號），英文前面加 en-，例如 en-food-12。
+ */
+const jaPhrases = SCENES_JA.flatMap((s) => s.phrases.map(([jp, romaji, zh], i) => ({
   id: s.id + '-' + (i + 1),
+  lang: 'ja',
   scene: s.id,
   slot: s.slot,
   jp,
@@ -213,6 +226,19 @@ export const PHRASES = SCENES.flatMap((s) => s.phrases.map(([jp, romaji, zh], i)
   text: plainText(jp),
   kana: kanaText(jp),
 })));
+const enPhrases = SCENES_EN.flatMap((s) => s.phrases.map(([text, zh, tip], i) => ({
+  id: 'en-' + s.id + '-' + (i + 1),
+  lang: 'en',
+  scene: s.id,
+  slot: s.slot,
+  jp: text, // 畫面顯示用的欄位（英文沒有注音標記，就是原文）
+  romaji: '',
+  tip: tip || '',
+  zh,
+  text,
+  kana: '',
+})));
+export const PHRASES = [...jaPhrases, ...enPhrases];
 
 export const PHRASE_BY_ID = Object.fromEntries(PHRASES.map((p) => [p.id, p]));
 
@@ -234,12 +260,12 @@ const gcd = (a, b) => (b ? gcd(b, a % b) : a);
  * 每個時段有自己的句子池，每天往前跳幾格（跳的格數和池子大小互質，
  * 所以一輪下來每一句都會輪到、不會重複），連續兩天也不會是同一個場景的下一句。
  */
-export function dailyPhrase(slot, day = taiwanDay()) {
-  const pool = PHRASES.filter((p) => p.slot === slot);
+export function dailyPhrase(slot, day = taiwanDay(), lang = 'ja') {
+  const pool = PHRASES.filter((p) => p.lang === lang && p.slot === slot);
   const step = [5, 7, 11, 13, 17].find((s) => gcd(s, pool.length) === 1) || 1;
   return pool[(day * step) % pool.length];
 }
 
-export function dailyThree(day = taiwanDay()) {
-  return Object.keys(SLOTS).map((slot) => ({ slot, phrase: dailyPhrase(slot, day) }));
+export function dailyThree(day = taiwanDay(), lang = 'ja') {
+  return Object.keys(SLOTS).map((slot) => ({ slot, phrase: dailyPhrase(slot, day, lang) }));
 }

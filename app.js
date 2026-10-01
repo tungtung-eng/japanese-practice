@@ -1,5 +1,7 @@
-import { SCENES, PHRASE_BY_ID, SLOTS, taiwanDay, dailyThree } from './phrases.js';
+import { LANGS, PHRASES, PHRASE_BY_ID, SLOTS, taiwanDay, dailyThree } from './phrases.js';
 import { KANA_GROUPS, KANA } from './kana.js';
+import { TRAP_GROUPS } from './traps.js';
+import { VOCAB_GROUPS } from './vocab.js';
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -17,9 +19,15 @@ function save(key, value) {
 const PUSH_API = load('pushApi', null) || 'https://japanese-practice-push.qianzhen-site.workers.dev';
 
 const settings = Object.assign({
-  scene: 'greet', autoSpeak: true, slow: false, big: false, furi: true, romaji: true,
+  lang: 'ja', sceneByLang: { ja: 'greet', en: 'greet' },
+  autoSpeak: true, slow: false, big: false, furi: true, romaji: true,
   kanaScript: 'hira', kanaDir: 'k2r', kanaGroups: ['basic'],
+  trapMode: 'listen', trapGroups: TRAP_GROUPS.map((g) => g.id),
+  vocabDir: 'zh2en', vocabGroup: VOCAB_GROUPS[0].id,
 }, load('settings', {}));
+// 舊版只有日文，場景存在 settings.scene
+if (typeof settings.scene === 'string') { settings.sceneByLang = { ...settings.sceneByLang, ja: settings.scene }; delete settings.scene; }
+if (!LANGS[settings.lang]) settings.lang = 'ja';
 const saveSettings = () => save('settings', settings);
 
 let favs = load('favs', []);            // 收藏的句子 id
@@ -28,10 +36,18 @@ let srs = load('srs', {});              // 複習排程 { id: { lvl, due } }，d
 let practiced = load('practiced', { day: 0, ids: [] }); // 今天練過哪些句子
 let kanaMiss = load('kanaMiss', {});    // 五十音每個字錯了幾次（答對會慢慢減少）
 let kanaToday = load('kanaToday', { day: 0, right: 0, total: 0 });
+let trapMiss = load('trapMiss', {});    // 發音陷阱：每個字錯了幾次
+let trapToday = load('trapToday', { day: 0, right: 0, total: 0 });
+let vocabMiss = load('vocabMiss', {});  // 單字：每個字錯了幾次
+let vocabToday = load('vocabToday', { day: 0, right: 0, total: 0 });
 
 const today = () => taiwanDay();
 const getPhrase = (id) => PHRASE_BY_ID[id] || custom[id] || lookupCache[id] || null;
-const sceneOf = (id) => SCENES.find((s) => s.id === id);
+const langOf = (p) => p.lang || 'ja';    // 舊的收藏沒有 lang，都是日文
+const L = () => LANGS[settings.lang];
+const curScene = () => settings.sceneByLang[settings.lang] || L().scenes[0].id;
+const sceneOf = (id, lang = settings.lang) => LANGS[lang].scenes.find((s) => s.id === id);
+const inLang = (id) => { const p = getPhrase(id); return !!p && langOf(p) === settings.lang; };
 
 function markPracticed(id) {
   if (practiced.day !== today()) practiced = { day: today(), ids: [] };
@@ -52,7 +68,7 @@ function addToReview(id, due = today() + 1) {
 function dueIds() {
   const d = today();
   return Object.entries(srs)
-    .filter(([id, s]) => s.due <= d && getPhrase(id))
+    .filter(([id, s]) => s.due <= d && inLang(id))
     .sort((a, b) => a[1].due - b[1].due)
     .map(([id]) => id);
 }
@@ -89,7 +105,7 @@ function pickVoice(lang) {
 }
 
 // Resolves when speaking finishes, so auto mode doesn't listen to its own voice.
-function speak(text, lang = 'ja-JP', slow = settings.slow) {
+function speak(text, lang = L().speech, slow = settings.slow) {
   if (!window.speechSynthesis || !text) return Promise.resolve();
   speechSynthesis.cancel();
   const u = new SpeechSynthesisUtterance(text);
@@ -104,8 +120,8 @@ function speak(text, lang = 'ja-JP', slow = settings.slow) {
     speechSynthesis.speak(u);
   });
 }
-// 用假名唸比較準（例如「一日」不會被唸成「ついたち」）；查詢來的句子沒有假名就唸原文。
-const sayPhrase = (p, slow) => speak(p.kana || p.text, 'ja-JP', slow);
+// 日文用假名唸比較準（例如「一日」不會被唸成「ついたち」）；英文和查詢來的句子沒有假名就唸原文。
+const sayPhrase = (p, slow) => speak(p.kana || p.text, LANGS[langOf(p)].speech, slow);
 
 // iOS only allows speech that started from a tap; speaking once inside a tap unlocks it.
 let ttsUnlocked = false;
@@ -128,10 +144,12 @@ function makeCard(p, { tag = false } = {}) {
   const el = document.createElement('div');
   el.className = 'card' + (p.id === currentId ? ' current' : '');
   el.dataset.id = p.id;
-  const scene = sceneOf(p.scene);
+  const lang = langOf(p);
+  const scene = sceneOf(p.scene, lang);
   el.innerHTML = (tag && scene ? '<div class="tag">' + scene.icon + ' ' + esc(scene.name) + '</div>' : '')
-    + '<div class="jp" lang="ja">' + rubyHTML(p.jp) + '</div>'
+    + '<div class="jp" lang="' + lang + '">' + (lang === 'ja' ? rubyHTML(p.jp) : esc(p.text)) + '</div>'
     + (p.romaji ? '<div class="romaji">' + esc(p.romaji) + '</div>' : '')
+    + (p.tip ? '<div class="tip">💡 ' + esc(p.tip) + '</div>' : '')
     + '<div class="zh">' + esc(p.zh) + '</div>'
     + '<div class="acts"></div><div class="result" hidden></div>';
   const acts = el.querySelector('.acts');
@@ -221,7 +239,29 @@ function compare(heard, form) {
   return { chars, hits, score };
 }
 
+// 英文以「單字」為單位比對：大小寫、標點、縮寫的撇號都不算錯；數字 12 當成 twelve。
+const NUM_EN = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten',
+  'eleven', 'twelve', 'thirteen', 'fourteen', 'fifteen', 'sixteen', 'seventeen', 'eighteen', 'nineteen', 'twenty'];
+const normWord = (w) => {
+  const x = w.toLowerCase().replace(/[’']/g, '').replace(/[^a-z0-9]/g, '');
+  return /^\d+$/.test(x) && NUM_EN[+x] ? NUM_EN[+x] : x;
+};
+
+function compareWords(heard, form) {
+  const chars = form.split(/(\s+)/).filter((t) => t !== '');
+  const norm = chars.map((t) => (/^\s+$/.test(t) ? '' : normWord(t)));
+  const idx = [];
+  norm.forEach((w, i) => { if (w) idx.push(i); });
+  const target = idx.map((i) => norm[i]);
+  const hitT = lcsMatch(heard.split(/\s+/).map(normWord).filter(Boolean), target);
+  const hits = new Array(chars.length).fill(null);
+  idx.forEach((i, k) => { hits[i] = hitT[k]; });
+  const score = target.length ? hitT.filter(Boolean).length / target.length : 0;
+  return { chars, hits, score };
+}
+
 function grade(p, heard) {
+  if (langOf(p) === 'en') return compareWords(heard, p.text);
   const forms = [p.text];
   if (p.kana && p.kana !== p.text) forms.push(p.kana);
   return forms.map((f) => compare(heard, f)).sort((a, b) => b.score - a.score)[0];
@@ -263,8 +303,8 @@ function resultHTML(p, heard, { buttons = true } = {}) {
   return {
     score: g.score,
     html: '<div class="verdict">' + verdict + '（' + Math.round(g.score * 100) + ' 分）</div>'
-      + '<div class="marks" lang="ja">' + marks + '</div>'
-      + '<div class="heard">你念的：<span lang="ja">' + esc(heard) + '</span></div>'
+      + '<div class="marks" lang="' + langOf(p) + '">' + marks + '</div>'
+      + '<div class="heard">你念的：<span lang="' + langOf(p) + '">' + esc(heard) + '</span></div>'
       + (buttons ? '<div class="self"><button data-act="listen">🔊 再聽</button><button data-act="slow">🐢 慢速</button><button data-act="again">🎤 再念一次</button></div>' : ''),
   };
 }
@@ -282,7 +322,7 @@ async function practice(p) {
   if (!SR) { showResult(p, selfCheckHTML('這個瀏覽器不能比對發音')); await sayPhrase(p); return; }
   if (rec) { rec.stop(); return; }
   try {
-    const heard = await recognize('ja-JP', 'ja');
+    const heard = await recognize(LANGS[langOf(p)].speech, 'ja');
     if (!heard) { showResult(p, selfCheckHTML('沒有聽到聲音')); return; }
     const r = resultHTML(p, heard);
     if (r.score >= PASS) {
@@ -342,7 +382,7 @@ function recognize(lang, who) {
       else resolve((finalText || interim).trim());
     };
     setListening(who);
-    showLive(who === 'me' ? '🎤 請說中文…說完停一下' : '🎤 請念日文…念完停一下');
+    showLive(who === 'me' ? '🎤 請說中文…說完停一下' : '🎤 請念' + L().name + '…念完停一下');
     try {
       r.start();
     } catch (e) {
@@ -359,7 +399,7 @@ function setListening(who) {
   $('micJa').classList.toggle('listening', who === 'ja');
   $('micMe').disabled = who === 'ja';
   $('micJa').disabled = who === 'me';
-  $('micMe').querySelector('.mic-sub').textContent = who === 'me' ? '正在聽…說完再按一下' : '查日文說法';
+  $('micMe').querySelector('.mic-sub').textContent = who === 'me' ? '正在聽…說完再按一下' : '查' + L().name + '說法';
   $('jaSub').textContent = autoMode ? '念不過可以先跳過' : who === 'ja' ? '正在聽…念完停一下' : '比對發音';
 }
 
@@ -398,7 +438,7 @@ async function runAuto() {
     if (autoSkip) { showResult(p, '<div class="verdict">⏭ 跳過，已加入複習</div>'); addToReview(p.id); next(); continue; }
     await sleep(300);
     let heard = '';
-    try { heard = await recognize('ja-JP', 'ja'); } catch (e) { toast(e.message); setAuto(false); break; }
+    try { heard = await recognize(LANGS[langOf(p)].speech, 'ja'); } catch (e) { toast(e.message); setAuto(false); break; }
     if (!autoMode) break;
     if (autoSkip) { showResult(p, '<div class="verdict">⏭ 跳過，已加入複習</div>'); addToReview(p.id); next(); await sleep(800); continue; }
 
@@ -433,7 +473,7 @@ function setAuto(on) {
   const btn = $('autoBtn');
   btn.classList.toggle('on', on);
   btn.textContent = on ? '⏹️ 自動跟讀中（按這裡停止）' : '🔁 自動跟讀（念對才換下一句）';
-  $('micJa').querySelector('.mic-main').textContent = on ? '⏭ 跳過這句' : '跟著念日文';
+  $('micJa').querySelector('.mic-main').textContent = on ? '⏭ 跳過這句' : '跟著念' + L().name;
   $('jaSub').textContent = on ? '念不過可以先跳過' : '比對發音';
   if (on) {
     unlockTts();
@@ -450,10 +490,10 @@ function skipAuto() {
   if (window.speechSynthesis) speechSynthesis.cancel();
 }
 
-// ---------- "I say it in Chinese" → how to say it in Japanese ----------
-// 1st choice: Google Translate's free public endpoint (also gives romaji). Fallback: MyMemory free API.
-async function googleTranslate(text) {
-  const url = 'https://translate.googleapis.com/translate_a/single?client=gtx&dt=t&dt=rm&sl=zh-TW&tl=ja&q=' + encodeURIComponent(text);
+// ---------- "I say it in Chinese" → how to say it in Japanese / English ----------
+// 1st choice: Google Translate's free public endpoint (also gives romaji for Japanese). Fallback: MyMemory free API.
+async function googleTranslate(text, to) {
+  const url = 'https://translate.googleapis.com/translate_a/single?client=gtx&dt=t&dt=rm&sl=zh-TW&tl=' + to + '&q=' + encodeURIComponent(text);
   const res = await fetch(url);
   if (!res.ok) throw new Error('google ' + res.status);
   const data = await res.json();
@@ -461,18 +501,18 @@ async function googleTranslate(text) {
   const ja = segs.filter((s) => s[0] != null).map((s) => s[0]).join('');
   const rm = segs.find((s) => s[0] == null && s[2]);
   if (!ja) throw new Error('google empty');
-  return { ja, romaji: rm ? rm[2] : '' };
+  return { out: ja, romaji: to === 'ja' && rm ? rm[2] : '' };
 }
-async function myMemoryTranslate(text) {
-  const url = 'https://api.mymemory.translated.net/get?q=' + encodeURIComponent(text) + '&langpair=zh-TW|ja';
+async function myMemoryTranslate(text, to) {
+  const url = 'https://api.mymemory.translated.net/get?q=' + encodeURIComponent(text) + '&langpair=zh-TW|' + to;
   const res = await fetch(url);
   if (!res.ok) throw new Error('mymemory ' + res.status);
   const data = await res.json();
   if (String(data.responseStatus) !== '200') throw new Error(data.responseDetails || 'mymemory');
-  return { ja: data.responseData.translatedText, romaji: '' };
+  return { out: data.responseData.translatedText, romaji: '' };
 }
-async function toJapanese(text) {
-  try { return await googleTranslate(text); } catch { return myMemoryTranslate(text); }
+async function translateTo(text, to) {
+  try { return await googleTranslate(text, to); } catch { return myMemoryTranslate(text, to); }
 }
 
 // 句庫裡意思相近的句子（中文字的兩兩組合重疊越多越像）
@@ -486,7 +526,7 @@ function bigrams(s) {
 function similar(text, max = 2) {
   const a = bigrams(text);
   if (!a.size) return [];
-  return Object.values(PHRASE_BY_ID)
+  return PHRASES.filter((p) => p.lang === settings.lang)
     .map((p) => {
       const b = bigrams(p.zh);
       let same = 0;
@@ -520,15 +560,17 @@ async function lookupZh(text) {
   $('talk').scrollTo({ top: 0, behavior: 'smooth' });
 
   const body = box.querySelector('.body');
+  const lang = settings.lang;
   try {
-    const { ja, romaji } = await toJapanese(text);
-    const id = customId(ja);
-    const p = custom[id] || { id, scene: 'custom', jp: ja.replace(/[[\]|]/g, ''), text: ja, kana: '', romaji, zh: text };
+    const { out, romaji } = await translateTo(text, lang);
+    const id = customId(lang + ':' + out);
+    const p = custom[id] || { id, lang, scene: 'custom', jp: out.replace(/[[\]|]/g, ''), text: out, kana: '', romaji, zh: text };
     lookupCache[id] = p;
     body.innerHTML = '';
     let alike = similar(text);
-    // 句庫裡剛好有一模一樣的日文：直接用句庫的（有假名注音）
-    const same = alike.find((q) => normStr(q.text) === normStr(ja));
+    // 句庫裡剛好有一模一樣的句子：直接用句庫的（日文有假名注音、英文有發音提示）
+    const flat = (s) => (lang === 'en' ? s.split(/\s+/).map(normWord).join(' ') : normStr(s));
+    const same = alike.find((q) => flat(q.text) === flat(out));
     const main = same || p;
     alike = alike.filter((q) => q !== same);
     body.appendChild(makeCard(main, { tag: !!same }));
@@ -536,7 +578,7 @@ async function lookupZh(text) {
       const h = document.createElement('div');
       h.className = 'who';
       h.style.marginTop = '8px';
-      h.textContent = '📚 句庫裡相近的句子（有假名和拼音）';
+      h.textContent = '📚 句庫裡相近的句子' + (lang === 'ja' ? '（有假名和拼音）' : '');
       body.appendChild(h);
       for (const q of alike) body.appendChild(makeCard(q, { tag: true }));
     }
@@ -572,7 +614,7 @@ function slotNow() {
 let todaySlot = slotNow();
 
 function renderToday() {
-  const three = dailyThree();
+  const three = dailyThree(today(), settings.lang);
   const el = $('today');
   el.innerHTML = '<div class="today-head"><b>今日三句</b><div class="today-tabs"></div></div>';
   const tabs = el.querySelector('.today-tabs');
@@ -596,7 +638,7 @@ function renderToday() {
     more.textContent = '睡前複習今天的另外兩句：';
     for (const { slot, phrase } of three.filter((x) => x.slot !== 'evening')) {
       const b = document.createElement('button');
-      b.lang = 'ja';
+      b.lang = settings.lang;
       b.textContent = SLOTS[slot].icon + ' ' + phrase.text;
       b.onclick = () => { todaySlot = slot; renderToday(); select(phrase.id, true); };
       more.appendChild(b);
@@ -613,12 +655,13 @@ function updateTodayTabs() {
   }
 }
 
-function showToday(slot) {
+function showToday(slot, lang) {
   if (SLOTS[slot]) todaySlot = slot;
+  if (LANGS[lang] && lang !== settings.lang) setLang(lang);
   switchTab('talk');
   renderToday();
   $('talk').scrollTo({ top: 0, behavior: 'smooth' });
-  const p = dailyThree().find((x) => x.slot === todaySlot).phrase;
+  const p = dailyThree(today(), settings.lang).find((x) => x.slot === todaySlot).phrase;
   select(p.id, false);
 }
 
@@ -628,12 +671,12 @@ let view = 'scene'; // scene | favs | review
 function renderScenes() {
   const grid = $('sceneGrid');
   grid.innerHTML = '';
-  for (const s of SCENES) {
+  for (const s of L().scenes) {
     const b = document.createElement('button');
-    b.className = 'scene-btn' + (view === 'scene' && s.id === settings.scene ? ' active' : '');
+    b.className = 'scene-btn' + (view === 'scene' && s.id === curScene() ? ' active' : '');
     b.innerHTML = '<span class="ico">' + s.icon + '</span><span>' + esc(s.name) + '</span>';
     b.onclick = () => {
-      settings.scene = s.id;
+      settings.sceneByLang = { ...settings.sceneByLang, [settings.lang]: s.id };
       saveSettings();
       setView('scene');
       $('listHead').scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -651,9 +694,9 @@ function setView(v) {
 }
 
 function listIds() {
-  if (view === 'favs') return favs.filter(getPhrase);
+  if (view === 'favs') return favs.filter(inLang);
   if (view === 'review') return reviewQueue.slice(reviewPos, reviewPos + 1);
-  return sceneOf(settings.scene).phrases.map((_, i) => settings.scene + '-' + (i + 1));
+  return PHRASES.filter((p) => p.lang === settings.lang && p.scene === curScene()).map((p) => p.id);
 }
 
 function listHead(title, sub, back) {
@@ -674,7 +717,7 @@ function renderList() {
   const list = $('list');
   list.innerHTML = '';
   if (view === 'scene') {
-    const s = sceneOf(settings.scene);
+    const s = sceneOf(curScene());
     listHead(s.icon + ' ' + esc(s.name), s.phrases.length + ' 句・點句子就會唸');
     for (const id of listIds()) list.appendChild(makeCard(getPhrase(id)));
   } else if (view === 'favs') {
@@ -701,7 +744,7 @@ function renderReview() {
   const card = document.createElement('div');
   card.className = 'flash';
   if (left <= 0) {
-    const next = Object.values(srs).filter((s) => s.due > today()).length;
+    const next = Object.entries(srs).filter(([id, s]) => s.due > today() && inLang(id)).length;
     card.innerHTML = '<div class="ask">🎉 今天的複習都完成了！</div>'
       + '<div class="count">' + (next ? '之後還排了 ' + next + ' 句，時間到會再出現' : '收藏句子或練習今日三句，就會排進複習') + '</div>';
     list.appendChild(card);
@@ -712,7 +755,7 @@ function renderReview() {
     + '<div class="ask"></div><div class="answer" hidden></div>'
     + '<button class="reveal">👀 想好了，看答案</button>'
     + '<div class="grade" hidden><button class="no">😅 忘了</button><button class="yes">😀 記得</button></div>';
-  card.querySelector('.ask').textContent = '「' + p.zh + '」日文怎麼說？';
+  card.querySelector('.ask').textContent = '「' + p.zh + '」' + LANGS[langOf(p)].name + '怎麼說？';
   card.querySelector('.reveal').onclick = () => {
     unlockTts();
     card.querySelector('.reveal').hidden = true;
@@ -884,14 +927,361 @@ function initKana() {
   renderKanaStats();
 }
 
+// ---------- Shared helpers for the English quizzes ----------
+const EN = 'en-US';
+const sayEn = (w, slow) => speak(w, EN, slow);
+
+/** 答對／答錯的計數：今天幾題、哪些字常錯（答對會慢慢減少） */
+function tally(store, todayRec, key, right) {
+  if (todayRec.day !== today()) { todayRec.day = today(); todayRec.right = 0; todayRec.total = 0; }
+  todayRec.total++;
+  if (right) {
+    todayRec.right++;
+    store[key] = Math.max(0, (store[key] || 0) - 1);
+    if (!store[key]) delete store[key];
+  } else {
+    store[key] = Math.min(5, (store[key] || 0) + 1);
+  }
+}
+
+function statsHTML(todayRec, unit) {
+  const t = todayRec.day === today() ? todayRec : { right: 0, total: 0 };
+  return '今天答對 <b>' + t.right + '</b> / ' + t.total + ' ' + unit;
+}
+
+function weakChips(el, store, label, onTap) {
+  const weak = Object.entries(store).filter(([, n]) => n > 0).sort((x, y) => y[1] - x[1]).slice(0, 12);
+  if (!weak.length) { el.insertAdjacentHTML('beforeend', '<div>還沒有常錯的 👍</div>'); return; }
+  el.insertAdjacentHTML('beforeend', '<div>' + label + '</div><div class="weak"></div>');
+  const w = el.querySelector('.weak');
+  for (const [key] of weak) {
+    const b = document.createElement('button');
+    b.textContent = key;
+    b.onclick = () => { unlockTts(); onTap(key); };
+    w.appendChild(b);
+  }
+}
+
+/** 多選／單選的分段按鈕 */
+function segButtons(box, items, isOn, onTap) {
+  box.innerHTML = '';
+  for (const it of items) {
+    const b = document.createElement('button');
+    b.dataset.v = it.id;
+    b.textContent = it.label;
+    b.onclick = () => { onTap(it.id); paint(); };
+    box.appendChild(b);
+  }
+  const paint = () => { for (const b of box.children) b.classList.toggle('on', isOn(b.dataset.v)); };
+  paint();
+}
+
+// ---------- Pronunciation traps (minimal pairs) ----------
+// 聽力題：App 念其中一個字，選是哪一個。口說題：你念，語音辨識聽起來是哪一個。
+const TRAPS = TRAP_GROUPS.flatMap((g) => g.pairs.map(([a, az, b, bz]) => ({ group: g.id, a, az, b, bz })));
+let trapLast = null;
+let trapTimer = null; // 答對後自動換題的計時器；手動換題或切換模式時要先取消，免得把新題目蓋掉
+
+function trapPool() {
+  return TRAPS.filter((t) => settings.trapGroups.includes(t.group));
+}
+
+function nextTrap() {
+  clearTimeout(trapTimer);
+  const pool = trapPool().filter((t) => t !== trapLast);
+  const t = pickWeighted(pool.length ? pool : trapPool(), (x) => 1 + 3 * ((trapMiss[x.a] || 0) + (trapMiss[x.b] || 0)));
+  trapLast = t;
+  const g = TRAP_GROUPS.find((x) => x.id === t.group);
+  $('trapTip').innerHTML = '<b>' + esc(g.title) + '</b>　' + esc(g.tip);
+  const pickA = Math.random() < 0.5;
+  const word = pickA ? t.a : t.b, zh = pickA ? t.az : t.bz;
+  const other = pickA ? t.b : t.a, otherZh = pickA ? t.bz : t.az;
+  if (settings.trapMode === 'listen') renderTrapListen(t, word, other);
+  else renderTrapSpeak(t, word, zh, other, otherZh);
+}
+
+function renderTrapListen(t, word, other) {
+  const q = $('trapQuiz');
+  q.innerHTML = '<div class="hint">👂 仔細聽，是哪一個字？</div>'
+    + '<button class="play big">🔊 再聽一次</button>'
+    + '<button class="play">🐢 慢速</button>'
+    + '<div class="choices"></div><div class="after"></div>';
+  const [play, slow] = q.querySelectorAll('.play');
+  play.onclick = () => { unlockTts(); sayEn(word); };
+  slow.onclick = () => { unlockTts(); sayEn(word, true); };
+  const box = q.querySelector('.choices');
+  let done = false;
+  for (const [w, z] of shuffle([[t.a, t.az], [t.b, t.bz]])) {
+    const b = document.createElement('button');
+    b.lang = 'en';
+    b.innerHTML = esc(w) + '<small>' + esc(z) + '</small>';
+    b.onclick = () => {
+      if (done) return;
+      done = true;
+      const right = w === word;
+      tally(trapMiss, trapToday, word, right);
+      save('trapMiss', trapMiss);
+      save('trapToday', trapToday);
+      b.classList.add(right ? 'right' : 'wrong');
+      if (!right) for (const x of box.children) if (x.firstChild.textContent === word) x.classList.add('right');
+      renderTrapStats();
+      const after = q.querySelector('.after');
+      if (right) {
+        after.innerHTML = '<div class="ok">✅ 答對了！</div>';
+        trapTimer = setTimeout(nextTrap, 1200);
+      } else {
+        // 答錯：兩個字各念一次讓你比較，再自己按下一題
+        after.innerHTML = '<div class="ng">剛剛念的是 <b lang="en">' + esc(word) + '</b>，你選了 <b lang="en">' + esc(other) + '</b></div>'
+          + '<div class="row"><button class="cmp">🔊 比較兩個字</button><button class="next">下一題 ▶</button></div>';
+        const cmp = async () => { await sayEn(word, true); await sleep(400); await sayEn(other, true); };
+        after.querySelector('.cmp').onclick = () => { unlockTts(); cmp(); };
+        after.querySelector('.next').onclick = nextTrap;
+        cmp();
+      }
+    };
+    box.appendChild(b);
+  }
+  if (ttsUnlocked) sayEn(word);
+}
+
+function renderTrapSpeak(t, word, zh, other, otherZh) {
+  const q = $('trapQuiz');
+  q.innerHTML = '<div class="hint">🎤 念這個字，看看 App 聽起來是哪一個</div>'
+    + '<div class="q word" lang="en"></div><div class="zh"></div>'
+    + '<div class="vs">小心別念成 <b lang="en"></b>（<span></span>）</div>'
+    + '<div class="row"><button class="listen">🔊 聽標準</button><button class="slow">🐢 慢速</button><button class="skip">跳過 ▶</button></div>'
+    + '<button class="say">🎤 念念看</button><div class="after"></div>';
+  q.querySelector('.q').textContent = word;
+  q.querySelector('.zh').textContent = zh;
+  q.querySelector('.vs b').textContent = other;
+  q.querySelector('.vs span').textContent = otherZh;
+  q.querySelector('.listen').onclick = () => { unlockTts(); sayEn(word); };
+  q.querySelector('.slow').onclick = () => { unlockTts(); sayEn(word, true); };
+  q.querySelector('.skip').onclick = () => { if (rec) rec.abort(); nextTrap(); };
+  const sayBtn = q.querySelector('.say');
+  sayBtn.onclick = async () => {
+    unlockTts();
+    if (!SR) { toast('這個瀏覽器不能用語音辨識，請用聽力題'); return; }
+    if (rec) { rec.stop(); return; }
+    sayBtn.classList.add('listening');
+    sayBtn.textContent = '正在聽…念完停一下';
+    let heard = '';
+    try { heard = await recognize(EN, 'trap'); } catch (e) { toast(e.message); }
+    sayBtn.classList.remove('listening');
+    sayBtn.textContent = '🎤 再念一次';
+    const words = heard.split(/\s+/).map(normWord);
+    const after = q.querySelector('.after');
+    if (!heard) { after.innerHTML = '<div class="ng">😶 沒聽到，靠近手機再念一次</div>'; return; }
+    const right = words.includes(normWord(word));
+    const confused = !right && words.includes(normWord(other));
+    tally(trapMiss, trapToday, word, right);
+    save('trapMiss', trapMiss);
+    save('trapToday', trapToday);
+    renderTrapStats();
+    if (right) {
+      after.innerHTML = '<div class="ok">✅ 聽起來就是 <b lang="en">' + esc(word) + '</b>，很標準！</div><button class="next">下一題 ▶</button>';
+    } else {
+      after.innerHTML = '<div class="ng">' + (confused
+        ? '😅 聽起來像 <b lang="en">' + esc(other) + '</b>（' + esc(otherZh) + '）'
+        : '🤔 聽成：<b lang="en">' + esc(heard) + '</b>') + '</div>'
+        + '<div class="tipline">' + esc(TRAP_GROUPS.find((g) => g.id === t.group).tip) + '</div>'
+        + '<button class="next">下一題 ▶</button>';
+      sayEn(word, true);
+    }
+    after.querySelector('.next').onclick = nextTrap;
+  };
+}
+
+function renderTrapStats() {
+  const el = $('trapStats');
+  el.innerHTML = statsHTML(trapToday, '題');
+  weakChips(el, trapMiss, '常錯的字（點一下聽發音）：', (w) => sayEn(w, true));
+  if (!$('trapList').hidden) renderTrapList();
+}
+
+function renderTrapList() {
+  const el = $('trapList');
+  el.innerHTML = '';
+  for (const g of TRAP_GROUPS) {
+    el.insertAdjacentHTML('beforeend', '<h4>' + esc(g.title) + '</h4><p class="list-tip">' + esc(g.tip) + '</p>');
+    const table = document.createElement('table');
+    table.className = 'words';
+    for (const [a, az, b, bz] of g.pairs) {
+      const tr = document.createElement('tr');
+      for (const [w, z] of [[a, az], [b, bz]]) {
+        const td = document.createElement('td');
+        if (trapMiss[w]) td.className = 'weak';
+        td.innerHTML = '<span class="k" lang="en">' + esc(w) + '</span><span class="r">' + esc(z) + '</span>';
+        td.onclick = () => { unlockTts(); sayEn(w, true); };
+        tr.appendChild(td);
+      }
+      table.appendChild(tr);
+    }
+    el.appendChild(table);
+  }
+}
+
+function initTraps() {
+  segButtons($('trapMode'), [{ id: 'listen', label: '👂 聽力題' }, { id: 'speak', label: '🎤 口說題' }],
+    (v) => settings.trapMode === v,
+    (v) => { settings.trapMode = v; saveSettings(); nextTrap(); });
+  segButtons($('trapGroups'), TRAP_GROUPS.map((g) => ({ id: g.id, label: g.name })),
+    (v) => settings.trapGroups.includes(v),
+    (v) => {
+      const set = new Set(settings.trapGroups);
+      if (set.has(v)) { if (set.size > 1) set.delete(v); } else set.add(v);
+      settings.trapGroups = [...set];
+      saveSettings();
+      nextTrap();
+    });
+  $('trapListBtn').onclick = () => { $('trapList').hidden = !$('trapList').hidden; if (!$('trapList').hidden) renderTrapList(); };
+  nextTrap();
+  renderTrapStats();
+}
+
+// ---------- Vocabulary ----------
+let vocabLast = null;
+let vocabTimer = null;
+const vocabGroup = () => VOCAB_GROUPS.find((g) => g.id === settings.vocabGroup) || VOCAB_GROUPS[0];
+
+function nextVocab() {
+  clearTimeout(vocabTimer);
+  const g = vocabGroup();
+  const pool = g.words.filter(([w]) => w !== vocabLast);
+  const [word, zh] = pickWeighted(pool, ([w]) => 1 + 4 * (vocabMiss[w] || 0));
+  vocabLast = word;
+  const options = shuffle([[word, zh], ...shuffle(g.words.filter(([w]) => w !== word)).slice(0, 3)]);
+  const dir = settings.vocabDir;
+  const q = $('vocabQuiz');
+  q.innerHTML = (dir === 'zh2en'
+    ? '<div class="hint">英文怎麼說？</div><div class="q zhq"></div>'
+    : '<div class="hint">👂 聽英文，選中文意思</div><button class="play big">🔊 再聽一次</button>')
+    + '<div class="choices"></div><div class="after"></div>';
+  if (dir === 'zh2en') q.querySelector('.q').textContent = zh;
+  else q.querySelector('.play').onclick = () => { unlockTts(); sayEn(word); };
+  const box = q.querySelector('.choices');
+  let done = false;
+  for (const [w, z] of options) {
+    const b = document.createElement('button');
+    if (dir === 'zh2en') b.lang = 'en';
+    b.textContent = dir === 'zh2en' ? w : z;
+    b.dataset.w = w;
+    b.onclick = () => {
+      if (done) return;
+      done = true;
+      unlockTts();
+      const right = w === word;
+      tally(vocabMiss, vocabToday, word, right);
+      save('vocabMiss', vocabMiss);
+      save('vocabToday', vocabToday);
+      b.classList.add(right ? 'right' : 'wrong');
+      if (!right) for (const x of box.children) if (x.dataset.w === word) x.classList.add('right');
+      q.querySelector('.after').innerHTML = '<div class="' + (right ? 'ok' : 'ng') + '">' + (right ? '✅ ' : '正確是：')
+        + '<b lang="en">' + esc(word) + '</b>　' + esc(zh) + '</div>';
+      renderVocabStats();
+      sayEn(word);
+      vocabTimer = setTimeout(nextVocab, right ? 1300 : 2600);
+    };
+    box.appendChild(b);
+  }
+  if (dir === 'en2zh' && ttsUnlocked) sayEn(word);
+}
+
+function renderVocabStats() {
+  const el = $('vocabStats');
+  el.innerHTML = statsHTML(vocabToday, '題');
+  weakChips(el, vocabMiss, '常錯的單字（點一下聽發音）：', (w) => sayEn(w));
+  if (!$('vocabList').hidden) renderVocabList();
+}
+
+function renderVocabList() {
+  const el = $('vocabList');
+  const g = vocabGroup();
+  el.innerHTML = '<h4>' + g.icon + ' ' + esc(g.name) + '（' + g.words.length + ' 個）</h4>';
+  const table = document.createElement('table');
+  table.className = 'words';
+  for (let i = 0; i < g.words.length; i += 2) {
+    const tr = document.createElement('tr');
+    for (const [w, z] of g.words.slice(i, i + 2)) {
+      const td = document.createElement('td');
+      if (vocabMiss[w]) td.className = 'weak';
+      td.innerHTML = '<span class="k" lang="en">' + esc(w) + '</span><span class="r">' + esc(z) + '</span>';
+      td.onclick = () => { unlockTts(); sayEn(w); };
+      tr.appendChild(td);
+    }
+    table.appendChild(tr);
+  }
+  el.appendChild(table);
+}
+
+function renderVocabGroups() {
+  const grid = $('vocabGroups');
+  grid.innerHTML = '';
+  for (const g of VOCAB_GROUPS) {
+    const b = document.createElement('button');
+    b.className = 'scene-btn' + (g.id === settings.vocabGroup ? ' active' : '');
+    b.innerHTML = '<span class="ico">' + g.icon + '</span><span>' + esc(g.name) + '</span>';
+    b.onclick = () => {
+      settings.vocabGroup = g.id;
+      saveSettings();
+      renderVocabGroups();
+      vocabLast = null;
+      nextVocab();
+      if (!$('vocabList').hidden) renderVocabList();
+    };
+    grid.appendChild(b);
+  }
+}
+
+function initVocab() {
+  segButtons($('vocabDir'), [{ id: 'zh2en', label: '看中文選英文' }, { id: 'en2zh', label: '聽英文選中文' }],
+    (v) => settings.vocabDir === v,
+    (v) => { settings.vocabDir = v; saveSettings(); nextVocab(); });
+  renderVocabGroups();
+  $('vocabListBtn').onclick = () => { $('vocabList').hidden = !$('vocabList').hidden; if (!$('vocabList').hidden) renderVocabList(); };
+  nextVocab();
+  renderVocabStats();
+}
+
 // ---------- Tabs ----------
+const TABS = { talk: null, kana: 'ja', traps: 'en', vocab: 'en' }; // 每個分頁屬於哪個語言（null = 共用）
+let currentTab = 'talk';
+
 function switchTab(name) {
-  for (const t of document.querySelectorAll('.tab')) t.classList.toggle('active', t.dataset.tab === name);
-  $('talk').hidden = name !== 'talk';
-  $('kana').hidden = name !== 'kana';
+  if (TABS[name] && TABS[name] !== settings.lang) name = 'talk';
+  currentTab = name;
+  for (const t of document.querySelectorAll('.tab')) {
+    t.hidden = !!TABS[t.dataset.tab] && TABS[t.dataset.tab] !== settings.lang;
+    t.classList.toggle('active', t.dataset.tab === name);
+  }
+  for (const id of Object.keys(TABS)) $(id).hidden = id !== name;
   $('talkBar').hidden = name !== 'talk';
   if (name !== 'talk' && autoMode) setAuto(false);
 }
+
+// ---------- Language switch ----------
+function setLang(lang) {
+  if (autoMode) setAuto(false);
+  if (rec) rec.abort();
+  if (window.speechSynthesis) speechSynthesis.cancel();
+  settings.lang = lang;
+  saveSettings();
+  document.documentElement.dataset.lang = lang;
+  for (const b of $('langSwitch').children) b.classList.toggle('on', b.dataset.v === lang);
+  $('micJa').querySelector('.mic-main').textContent = '跟著念' + L().name;
+  setListening(null);
+  $('typeInput').placeholder = '打中文，查' + L().name + '怎麼說…';
+  $('lookup').innerHTML = '';
+  if (view === 'review') view = 'scene';
+  renderScenes();
+  renderToday();
+  renderList();
+  updateReviewBadge();
+  select(dailyThree(today(), lang).find((x) => x.slot === todaySlot).phrase.id, false);
+  switchTab(currentTab);
+  pushLangSync();
+}
+
 
 // ---------- Daily push ----------
 const isIOS = /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
@@ -923,7 +1313,7 @@ function pushSay(html, btnText, onClick, showTest) {
 async function pushInit() {
   if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) {
     if (isIOS && !standalone) {
-      pushSay('<span class="off">還不能開啟</span><br>iPhone 要先把這個網頁<b>加入主畫面</b>：<br>Safari 下方的「分享」⬆️ →「加入主畫面」，<br>再從主畫面的「日語隨身練」圖示打開，回到這裡開啟通知。（需要 iOS 16.4 以上）');
+      pushSay('<span class="off">還不能開啟</span><br>iPhone 要先把這個網頁<b>加入主畫面</b>：<br>Safari 下方的「分享」⬆️ →「加入主畫面」，<br>再從主畫面的圖示打開，回到這裡開啟通知。（需要 iOS 16.4 以上）');
     } else {
       pushSay('<span class="off">這個瀏覽器不支援通知</span>');
     }
@@ -938,9 +1328,9 @@ async function pushInit() {
   }
   const sub = await reg.pushManager.getSubscription().catch(() => null);
   if (sub && Notification.permission === 'granted') {
-    pushSay('<span class="on">✅ 已開啟</span>：每天 09:00、11:30、20:00 各送一句。', '關閉通知', pushOff, true);
+    pushSay('<span class="on">✅ 已開啟</span>：每天 09:00、11:30、20:00 各送一句<b>' + L().name + '</b>。<br><small>送哪一種語言，跟著上方 🇯🇵／🇺🇸 切換。</small>', '關閉通知', pushOff, true);
   } else if (Notification.permission === 'denied') {
-    pushSay('<span class="off">通知被擋掉了</span><br>iPhone 請到「設定 → 通知 → 日語隨身練」打開。', '再試一次', pushOn);
+    pushSay('<span class="off">通知被擋掉了</span><br>iPhone 請到「設定 → 通知」找到這個 App 打開。', '再試一次', pushOn);
   } else {
     pushSay('<span class="off">尚未開啟</span>', '🔔 開啟每日三句', pushOn);
   }
@@ -958,7 +1348,7 @@ async function pushOn() {
     const reg = await navigator.serviceWorker.ready;
     let sub = await reg.pushManager.getSubscription();
     if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64ToU8(info.key) });
-    await pushPost('/subscribe', { sub: sub.toJSON() });
+    await pushPost('/subscribe', { sub: sub.toJSON(), lang: settings.lang });
     await pushPost('/test', { sub: sub.toJSON() });
     await pushInit();
   } catch (e) {
@@ -987,12 +1377,22 @@ async function pushTest() {
   try {
     const reg = await navigator.serviceWorker.ready;
     const sub = await reg.pushManager.getSubscription();
-    if (sub) await pushPost('/test', { sub: sub.toJSON(), preview: true });
+    if (sub) await pushPost('/test', { sub: sub.toJSON(), preview: true, lang: settings.lang });
     b.textContent = '已送出今日一句，等幾秒';
   } catch {
     b.textContent = '送出失敗';
   }
   setTimeout(() => { b.disabled = false; b.textContent = '送一則測試（今日一句）'; }, 3000);
+}
+
+/** 切換語言時，告訴推播伺服器之後改送哪一種語言（沒開通知就什麼都不做） */
+async function pushLangSync() {
+  try {
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
+    const reg = await navigator.serviceWorker.getRegistration();
+    const sub = reg && await reg.pushManager.getSubscription();
+    if (sub) await pushPost('/subscribe', { sub: sub.toJSON(), lang: settings.lang });
+  } catch { /* 沒網路時下次切換再同步 */ }
 }
 
 // ---------- Wiring ----------
@@ -1008,14 +1408,18 @@ function applySettings() {
 }
 
 function init() {
-  if (!sceneOf(settings.scene)) settings.scene = SCENES[0].id;
+  for (const lang of Object.keys(LANGS)) {
+    if (!sceneOf(settings.sceneByLang[lang], lang)) settings.sceneByLang[lang] = LANGS[lang].scenes[0].id;
+  }
   applySettings();
-  renderScenes();
-  renderToday();
-  renderList();
-  select(dailyThree().find((x) => x.slot === todaySlot).phrase.id, false);
-  updateReviewBadge();
   initKana();
+  initTraps();
+  initVocab();
+  for (const b of $('langSwitch').children) b.onclick = () => { unlockTts(); if (b.dataset.v !== settings.lang) setLang(b.dataset.v); };
+  // 從通知點進來：網址帶 ?today=morning|noon|evening&lang=ja|en
+  const params = new URLSearchParams(location.search);
+  if (LANGS[params.get('lang')]) settings.lang = params.get('lang');
+  setLang(settings.lang);
   if (!SR) $('noSpeech').hidden = false;
 
   $('micMe').onclick = sayChinese;
@@ -1060,15 +1464,14 @@ function init() {
   window.addEventListener('offline', net);
   net();
 
-  // 從通知點進來：網址帶 ?today=morning|noon|evening
-  const fromPush = new URLSearchParams(location.search).get('today');
+  const fromPush = params.get('today');
   if (fromPush) {
-    showToday(fromPush);
+    showToday(fromPush, params.get('lang'));
     history.replaceState(null, '', location.pathname);
   }
 
   if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
-    navigator.serviceWorker.addEventListener('message', (e) => { if (e.data && e.data.today) showToday(e.data.today); });
+    navigator.serviceWorker.addEventListener('message', (e) => { if (e.data && e.data.today) showToday(e.data.today, e.data.lang); });
     // When a new version takes over, reload once so the new screen shows up right away.
     const hadController = !!navigator.serviceWorker.controller;
     let reloaded = false;
