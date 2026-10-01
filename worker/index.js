@@ -9,6 +9,7 @@
  *   POST /test         馬上送一則測試：第一次開啟時送「設定成功」，
  *                      之後按「送一則測試」送現在這個時段的今日一句（跟真的一樣）
  *   POST /tick         到時間就送今日一句（台灣時間 09:00、11:30、20:00）
+ *   GET  /status       檢查用：有幾支手機訂閱、今天和昨天哪些時段已經送出（用瀏覽器打開就能看）
  *
  * /tick 由工地氣象站的排程（每 10 分鐘）順便呼叫，這裡自己不佔排程名額
  * （Cloudflare 免費方案整個帳號最多 5 個排程，已經用滿）。
@@ -116,6 +117,7 @@ async function handle(request, env) {
   if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors(request) });
 
   if (url.pathname === '/key') return json({ key: env.VAPID_PUBLIC || null }, 200, request);
+  if (url.pathname === '/status') return statusPage(env);
   if (url.pathname === '/') return new Response('英日雙語學習機 推播伺服器運作中', { headers: { 'content-type': 'text/plain; charset=utf-8' } });
 
   if (request.method !== 'POST') return json({ error: '只接受 POST' }, 405, request);
@@ -152,6 +154,34 @@ async function handle(request, env) {
     return json({ ok: r.ok, status: r.status }, 200, request);
   }
   return json({ error: '沒有這個路徑' }, 404, request);
+}
+
+/** 檢查用的狀態頁：不寫入任何資料，只讀 */
+async function statusPage(env) {
+  const subs = await env.SUBS.list({ prefix: 'sub:' });
+  const langs = { ja: 0, en: 0 };
+  for (const k of subs.keys) {
+    const rec = await env.SUBS.get(k.name, 'json');
+    if (rec) langs[langOk(rec.lang)]++;
+  }
+  const names = { morning: '☀️ 09:00', noon: '🍱 11:30', evening: '🌙 20:00' };
+  const day = taiwanDay(Date.now());
+  const lines = [];
+  for (const [d, label] of [[day, '今天'], [day - 1, '昨天']]) {
+    const marks = [];
+    for (const slot of Object.keys(SLOT_AT)) {
+      marks.push(names[slot] + (await env.SUBS.get('sent:' + d + ':' + slot) ? ' ✅ 已送出' : ' ⬜ 沒送'));
+    }
+    lines.push(label + '：' + marks.join('　'));
+  }
+  const now = new Date(Date.now() + 8 * 3600 * 1000).toISOString().replace('T', ' ').slice(0, 16);
+  const text = '英日雙語學習機 推播伺服器狀態\n\n'
+    + '現在台灣時間：' + now + '\n'
+    + '訂閱的手機：' + subs.keys.length + ' 支（日文 ' + langs.ja + '、英文 ' + langs.en + '）\n'
+    + '推播金鑰：' + (env.VAPID_PUBLIC && env.VAPID_PRIVATE ? '✅ 已設定' : '❌ 沒有設定') + '\n\n'
+    + lines.join('\n') + '\n\n'
+    + '「已送出」代表工地氣象站有準時叫醒這裡。時間過了還是「沒送」，就是工地氣象站沒有叫醒。';
+  return new Response(text, { headers: { 'content-type': 'text/plain; charset=utf-8' } });
 }
 
 async function broadcast(slot, ms, env) {
