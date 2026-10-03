@@ -1,5 +1,7 @@
 # 檢查推播伺服器狀態（手動執行）：在 GitHub 的 Actions 頁面按「Run workflow」，
-# 結果會印在執行紀錄裡。不會改任何資料。
+# 結果會印在執行紀錄裡。
+# 最後一步會敲一下 /tick：不在 09:00／11:30／20:00 後 10 分鐘內就什麼都不做；
+# 在時間內的話，若工地氣象站已經叫醒過，會回「送過了」，沒有的話就會補送（同一時段一天只送一次）。
 name: 檢查推播伺服器
 on:
   workflow_dispatch:
@@ -13,3 +15,5 @@ jobs:
         run: curl -sS -m 20 https://japanese-practice-push.qianzhen-site.workers.dev/status ; echo
       - name: 公鑰
         run: curl -sS -m 20 https://japanese-practice-push.qianzhen-site.workers.dev/key | head -c 60 ; echo
+      - name: 敲一下 /tick
+        run: curl -sS -m 30 -X POST https://japanese-practice-push.qianzhen-site.workers.dev/tick ; echo
