@@ -1,0 +1,15 @@
+# 檢查推播伺服器狀態（手動執行）：在 GitHub 的 Actions 頁面按「Run workflow」，
+# 結果會印在執行紀錄裡。不會改任何資料。
+name: 檢查推播伺服器
+on:
+  workflow_dispatch:
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 推播伺服器首頁
+        run: curl -sS -m 20 https://japanese-practice-push.qianzhen-site.workers.dev/ ; echo
+      - name: 狀態頁
+        run: curl -sS -m 20 https://japanese-practice-push.qianzhen-site.workers.dev/status ; echo
+      - name: 公鑰
+        run: curl -sS -m 20 https://japanese-practice-push.qianzhen-site.workers.dev/key | head -c 60 ; echo
