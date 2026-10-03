@@ -1395,6 +1395,22 @@ async function pushLangSync() {
   } catch { /* 沒網路時下次切換再同步 */ }
 }
 
+/**
+ * 點通知時背景程式會把「要練哪一句」記在快取裡。
+ * App 一打開（或從背景切回來）就讀一次：30 分鐘內點的通知，就跳到那一句，讀完就清掉。
+ */
+async function checkPendingFromPush() {
+  try {
+    if (!('caches' in window)) return;
+    const c = await caches.open('pending-today');
+    const r = await c.match('pending');
+    if (!r) return;
+    await c.delete('pending');
+    const d = await r.json();
+    if (d.today && Date.now() - d.t < 30 * 60 * 1000) showToday(d.today, d.lang);
+  } catch { /* 讀不到就算了 */ }
+}
+
 // ---------- Wiring ----------
 function applySettings() {
   document.body.classList.toggle('big', settings.big);
@@ -1437,7 +1453,7 @@ function init() {
   };
   // Never keep the microphone on in the background.
   document.addEventListener('visibilitychange', () => {
-    if (!document.hidden) { renderToday(); updateReviewBadge(); return; }
+    if (!document.hidden) { renderToday(); updateReviewBadge(); checkPendingFromPush(); return; }
     if (autoMode) setAuto(false);
     if (rec) rec.abort();
   });
@@ -1468,6 +1484,9 @@ function init() {
   if (fromPush) {
     showToday(fromPush, params.get('lang'));
     history.replaceState(null, '', location.pathname);
+    caches?.open('pending-today').then((c) => c.delete('pending')).catch(() => {});
+  } else {
+    checkPendingFromPush();
   }
 
   if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
