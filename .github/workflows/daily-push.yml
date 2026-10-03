@@ -1,0 +1,17 @@
+# 每日三句推播的「備援叫醒」。
+# 主要由工地氣象站每 10 分鐘叫醒推播伺服器；萬一它沒叫（例如沒部署到新版），
+# 這裡在每個時段後幾分鐘再敲一次 /tick。
+# 推播伺服器同一時段一天只送一次，所以兩邊都敲也不會重複送。
+# GitHub 的排程常會晚幾分鐘，所以每個時段敲三次。時間是 UTC（台灣 = UTC + 8）。
+name: 每日三句推播（備援）
+on:
+  schedule:
+    - cron: '1,4,7 1 * * *'     # 台灣 09:01、09:04、09:07
+    - cron: '31,34,37 3 * * *'  # 台灣 11:31、11:34、11:37
+    - cron: '1,4,7 12 * * *'    # 台灣 20:01、20:04、20:07
+  workflow_dispatch:
+jobs:
+  tick:
+    runs-on: ubuntu-latest
+    steps:
+      - run: curl -sS -m 30 -X POST https://japanese-practice-push.qianzhen-site.workers.dev/tick ; echo
